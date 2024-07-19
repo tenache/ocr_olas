@@ -7,46 +7,16 @@ from collections import Counter
 import easyocr
 from determine_watermark_bbox import return_bbox
 from look_at_specific_frame import frame_time
-
-def is_water_mark(frame, bbox, buffer_pixels = None):
-    """
-    function to determine with some degree of probability if an identified text is actually part of a watermark
-    """
-    if buffer_pixels is None:
-        buffer_pixels = 40 
-    color, most_commmon = get_text_color(frame, bbox)
-
-    if sum(color - main_water_mark_color) < 80:
-        color_within_range = True 
-    else:
-        color_within_range = False
-    if sum(most_commmon - most_common_color) < 80:
-        common_within_range = True
-    else:
-        common_within_range = False
-    
-    leftmost = bbox[0][0]
-    rightmost = bbox[1][0]
-    uppermost = bbox[0][1]
-    bottommost = bbox[1][1]
-    box_within_range = False
-
-    # determine if the we are analyzing is inside the buffer zone
-    for watermark_bbox in water_mark_bboxes:
-        if leftmost >= watermark_bbox[0][0] + buffer_pixels and rightmost <= watermark_bbox[1][0] - buffer_pixels:
-            if uppermost <= watermark_bbox[0][1] - buffer_pixels and bottommost >= watermark_bbox[1][1] + buffer_pixels:
-                box_within_range = True
-        if not box_within_range:
-            break
-    
-    return color_within_range, common_within_range, box_within_range
+from helper_functions import is_water_mark, resize_video_if_needed
+import subprocess
 
 # It's important to pre-process, but we can worry about that later... 
 
+WATERMARK_MINIMUM = 0.6
+path = "L1_LoveAgain_ITR-A_16x9_ENG_TXTD_Stereo_PRORES_1080P24_PR360.mp4"
 
-path = "L1_LoveAgain_ITR-A_16x9_ENG_TXTD_Stereo_PRORES_1080P24_PR.mp4"
-
-cap = cv2.VideoCapture(path)
+new_path = resize_video_if_needed(path, 360, target_bitrate="1M")
+cap = cv2.VideoCapture(new_path)
 
 count = 0
 
@@ -59,16 +29,16 @@ if not cap.isOpened():
     print("Error: could not open video")
     exit()
 
-
 water_mark_colors = []
 water_mark_most_common = []
 main_water_mark_color = [135, 137, 140]
 water_mark_bboxes_all = []
 fps = cap.get(cv2.CAP_PROP_FPS)
+water_mark_bboxes = []
 while cap.isOpened():
 
     ret, frame = cap.read()
-    water_mark_bboxes = []
+
     if count == 0:
         water_mark_bboxes = return_bbox(frame)
     if count < 10:
@@ -92,6 +62,7 @@ while cap.isOpened():
         main_water_mark_color = np.mean([water_mark_color, most_common_color], axis=0)
         print(f"most common water_mark_color is {most_common_color}")
         print(f"main_water_mark_color is {water_mark_color}")
+        
         # This is super over-kill and maybe even wrong ... 
         print(f"main water_mark_color is {main_water_mark_color}")
     
@@ -103,8 +74,9 @@ while cap.isOpened():
         all_text = ""
         for (bbox, text, prob) in result:
                 is_text = False
-                color, common, box_range = is_water_mark(frame, bbox, buffer_pixels=50)
-                if color or common or box_range:
+                is_watermark_index = is_water_mark(frame, bbox, water_mark_bboxes, main_water_mark_color, most_common_color, text, buffer_pixels=100, buffer_color = 130)
+                print(f"is_watermark_index is {is_watermark_index}")
+                if is_watermark_index > WATERMARK_MINIMUM:
                     continue
                 elif text != "" and text != " ":
                     print(f"Text: {text}, Probability: {prob}")
@@ -122,7 +94,6 @@ while cap.isOpened():
                 file.write("---------------------------------------------\n")
             cv2.imwrite(f"title_{minutes}_{seconds}.jpg", frame)
 
-
         # if cv2.waitKey(1) & 0xFF == ord('q'):
         #     break
     count += 1
@@ -131,9 +102,3 @@ cap.release()
 # cv2.destroyAllWindows()
 total_time = round((time()- start), 2)
 print(f"process took {total_time//60} minutes and {round(total_time%60, 2)} seconds to complete")
-
-
-    
-    
-    
-    

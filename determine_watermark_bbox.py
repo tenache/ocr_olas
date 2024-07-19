@@ -1,6 +1,5 @@
 import cv2
 
-
 # Global variables
 ix, iy = -1, -1
 drawing = False
